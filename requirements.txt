@@ -1,0 +1,2 @@
+aiosmtpd
+smart-open[s3]

@@ -1,0 +1,42 @@
+---
+name: CI Push
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - develop
+
+permissions: read-all
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: |
+          make requirements
+
+      - name: Lint
+        run: make lint
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: sut:latest
+          trivy-config: trivy.yaml
