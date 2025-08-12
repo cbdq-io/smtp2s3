@@ -3,6 +3,9 @@ all: lint clean build test
 build:
 	docker compose build
 
+changelog:
+	docker run --quiet --rm --volume "${PWD}:/mnt/source" --workdir /mnt/source ghcr.io/cbdq-io/gitchangelog > CHANGELOG.md
+
 clean:
 	docker compose down -t 0
 
