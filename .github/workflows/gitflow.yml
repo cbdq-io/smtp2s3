@@ -9,9 +9,8 @@ on:
       - "*"
       - "**"
   push:
-    branches:
-      - "*"
-      - "**"
+    branches-ignore:
+      - dependabot/**
     tags:
       - "!*" # This excludes all tags
 
