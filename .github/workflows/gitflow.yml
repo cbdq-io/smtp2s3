@@ -9,9 +9,8 @@ on:
       - "*"
       - "**"
   push:
-    branches:
-      - "*"
-      - "**"
+    branches-ignore:
+      - dependabot/**
     tags:
       - "!*" # This excludes all tags
 
@@ -24,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Retrieve Release Candidate Name
         id: version
