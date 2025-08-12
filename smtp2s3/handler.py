@@ -1,0 +1,187 @@
+"""A handler for use with aiosmtpd."""
+import datetime
+import uuid
+from email import message_from_bytes
+from logging import Logger
+from urllib.parse import urlparse
+
+import boto3
+import smart_open
+from aiosmtpd.smtp import SMTP, Envelope, Session
+
+from smtp2s3 import EnvironmentConfig
+
+utc = datetime.timezone.utc
+
+
+class Handler:
+    """
+    A custom SMTPD handler.
+
+    Parameters
+    ----------
+    config : EnvironmentConfig
+        The config is extracted from the environment variables.
+    logger : logging.Logger
+        A logger to be used.
+    """
+
+    def __init__(self, config: EnvironmentConfig, logger: Logger) -> None:
+        session = boto3.Session(
+            aws_access_key_id=config.aws_access_key_id,
+            aws_secret_access_key=config.aws_secret_access_key
+        )
+        endpoint = config.s3_endpoint_url
+
+        if endpoint:
+            logger.debug(f'S3 endpoint is "{endpoint}".')
+            use_ssl = True
+
+            if endpoint.startswith('http:'):
+                use_ssl = False
+
+            s3client = session.client(
+                's3',
+                endpoint_url=endpoint,
+                use_ssl=use_ssl
+            )
+        else:
+            s3client = session.client('s3')
+
+        self.transport_params = {
+            'client': s3client
+        }
+        self._logger = logger
+
+        if config.s3_prefix_pattern is None:
+            raise KeyError(
+                'Require S3_PREFIX_PATTERN to be set in the environment.')
+        else:
+            self.object_prefix = self.path_prefix(config.s3_prefix_pattern)
+
+    def generate_own_id(self) -> str:
+        """
+        Generate a UUID for the message.
+
+        Only used of the message itself doesn't have an ID.
+        """
+        return str(uuid.uuid4())
+
+    async def handle_DATA(self, server: SMTP, session: Session,
+                          envelope: Envelope) -> str:
+        """
+        Implement a hook that will be called after a message has been received.
+
+        Parameters
+        ----------
+        server : SMTP
+            The SMTP server instance.
+        session : Session
+            The session instance currently being handled.
+        envelope : Envelope
+            The envelope instance of the current SMTP transaction.
+
+        Returns
+        -------
+        str
+            A status string indicating the outcome.
+        """
+        try:
+            msg = message_from_bytes(envelope.content)
+            msg_id = msg.get('Message-ID')
+
+            if not msg_id:
+                msg_id = self.generate_own_id()
+
+            message_size_bytes = len(envelope.original_content)
+            path = f'{self.object_prefix}{msg_id}.eml.gz'
+
+            with smart_open.open(path,
+                                 'wb',
+                                 transport_params=self.transport_params
+                                 ) as stream:
+                message_bytes_written = stream.write(envelope.original_content)
+
+            compression_rate = (
+                round(
+                    (
+                        message_bytes_written / message_size_bytes
+                    ) * 100.0,
+                    2
+                )
+            )
+            log_msg = f'Wrote {message_bytes_written:,} bytes to {path} '
+            log_msg += f'compressed from {message_size_bytes} '
+            log_msg += f'({compression_rate})%.'
+            self._logger.debug(log_msg)
+        except Exception as ex:
+            self._logger.error(f'500 Unable to process message {ex} "{path}".')
+            return '500 Could not process your message'
+
+        return '250 OK'
+
+    def handle_exception(self, error: Exception) -> str:
+        """Handle connection errors."""
+        self._logger.error(error)
+        return '542 Internal server error'
+
+    def path_prefix(
+            self, prefix_pattern: str,
+            timestamp: datetime.datetime = datetime.datetime.now(utc)) -> str:
+        """
+        Construct a path from the pattern based upon the timestamp.
+
+        Parameters
+        ----------
+        prefix_pattern : str
+            The pattern of the path with variables substituted based on the
+            timestamp.  Substitutions will be:
+                - {YYYY} for the year.
+                - {MM} for the month (zero padded).
+                - {dd} for the day (zero padded).
+                - {HH} for the hour (zero padded).
+                - {mm} for the minute (zero padded).
+
+        timestamp : datetime.datetime, optional
+            The timestamp to use when constructing the path, by default
+            datetime.datetime.now().
+
+        Returns
+        -------
+        str
+            The path for the data to be written to.
+
+        Raises
+        ------
+        ValueError
+            If the provided pattern would not produce a valid path
+            name.
+        """
+        prefix = prefix_pattern.removesuffix('/')
+
+        YYYY = str(timestamp.year)
+        prefix = prefix.replace('{YYYY}', YYYY)
+
+        MM = f'{timestamp.month:02}'
+        prefix = prefix.replace('{MM}', MM)
+
+        dd = f'{timestamp.day:02}'
+        prefix = prefix.replace('{dd}', dd)
+
+        HH = f'{timestamp.hour:02}'
+        prefix = prefix.replace('{HH}', HH)
+
+        mm = f'{timestamp.minute:02}'
+        prefix = prefix.replace('{mm}', mm)
+
+        prefix += '/'
+        parse_result = urlparse(prefix)
+
+        try:
+            assert parse_result.scheme == 's3', 'URL scheme must be "s3".'
+            bucket_name = parse_result.netloc
+            assert len(bucket_name), 'Bucket name not specified.'
+        except AssertionError as ex:
+            raise ValueError(ex)
+
+        return prefix
