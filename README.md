@@ -24,11 +24,11 @@ The container is configured via environment variables.
 
 The following substitutions will be made in the provided pattern to create
 the path for writing the data to:
-    - {YYYY} for the year.
-    - {MM} for the month (zero padded).
-    - {dd} for the day (zero padded).
-    - {HH} for the hour (zero padded).
-    - {mm} for the minute (zero padded).
+- {YYYY} for the year.
+- {MM} for the month (zero padded).
+- {dd} for the day (zero padded).
+- {HH} for the hour (zero padded).
+- {mm} for the minute (zero padded).
 
 For example if `S3_PREFIX_PATTERN` is set to
 `s3://mybucket/emails/year={YYYY}/month={MM}/day={dd}/hour={HH}/minute={mm}`
