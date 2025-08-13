@@ -3,6 +3,7 @@ import datetime
 import os
 from email.message import EmailMessage
 from smtplib import SMTP as Client
+from smtplib import SMTPSenderRefused
 
 import boto3
 from pytest_bdd import given, parsers, scenario, then, when
@@ -63,6 +64,13 @@ def _():
     return 'Anne Person'
 
 
+@when(parsers.parse('the message size is {message_size}'),
+      target_fixture='message_size')
+def _(message_size: str):
+    """the message size is <message_size>."""
+    return message_size
+
+
 @when(parsers.parse('the timestamp is {timestamp}'), target_fixture='timestamp')
 def _(timestamp: str):
     """the timestamp is <timestamp>."""
@@ -71,11 +79,26 @@ def _(timestamp: str):
 
 @when(parsers.parse('to address is {to_address}'),
       target_fixture='smtp_response')
-def _(to_address: str, client: Client, from_name: str, from_address: str):
+def _(to_address: str, client: Client, from_name: str, from_address: str,
+      message_size: str):
     """to address is <to_address>."""
+    content = {
+        'tiny': 'Hello, world!',
+        'larger': """
+        In The Crying of Lot 49, Oedipa Maas, a California housewife, is named
+        executor of her ex-boyfriend Pierce Inverarity’s estate and stumbles
+        into what may be a centuries-old underground postal system called the
+        Trystero. As she investigates, she encounters cryptic symbols,
+        strange coincidences, and a tangle of conspiracy theories that blur the
+        line between reality and paranoia. The novel leaves readers uncertain
+        whether Oedipa has uncovered a genuine hidden network or is succumbing
+        to delusion, making it both a satirical detective story and a
+        meditation on meaning in a chaotic world.
+        """
+    }
     client.set_debuglevel(1)
     message = EmailMessage()
-    message.set_content('Hello, world!')
+    message.set_content(content[message_size])
     message['Subject'] = 'Test Message'
     message['From'] = f'{from_name} <{from_address}>'
     message['To'] = to_address
@@ -83,9 +106,9 @@ def _(to_address: str, client: Client, from_name: str, from_address: str):
     try:
         client.send_message(message)
         response_code = 205
-    except Exception as ex:
-        print(ex)
-        response_code = 999
+    except SMTPSenderRefused as ex:
+        logger.error(f'{ex.smtp_error}')
+        response_code = ex.smtp_code
 
     return response_code
 

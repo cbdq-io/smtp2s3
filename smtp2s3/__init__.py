@@ -31,10 +31,10 @@ class EnvironmentConfig:
     ----------
     log_level : int
         The log level to run at.
-
+    smtp_data_size_limit : int
+        The maximum size in bytes for a message to be accepted.
     smtp_hostname : str
         The hostname to listen on for SMTPD.
-
     smtp_port : int
         The port number to listen on for SMTPD.
 
@@ -52,6 +52,12 @@ class EnvironmentConfig:
         self.log_level = self._get_log_level()
         self.s3_endpoint_url = environ.get('S3_ENDPOINT_URL', None)
         self.s3_prefix_pattern = environ.get('S3_PREFIX_PATTERN')
+        self.smtp_data_size_limit = int(
+            environ.get(
+                'SMTP_DATA_SIZE_LIMIT',
+                str(10 * 1024 * 1024)
+            )
+        )
         self.smtp_hostname = environ.get('SMTP_HOSTNAME', '127.0.0.1')
         self.smtp_port = int(environ.get('SMTP_PORT', '8025'))
 

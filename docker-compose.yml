@@ -29,6 +29,7 @@ services:
       LOG_LEVEL: DEBUG
       S3_ENDPOINT_URL: http://minio:9000
       S3_PREFIX_PATTERN: "s3://mybucket/emails/year={YYYY}/month={MM}/day={dd}/hour={HH}/minute={mm}"
+      SMTP_DATA_SIZE_LIMIT: 194
       SMTP_HOSTNAME: "0.0.0.0"
     image: sut:latest
     ports:
