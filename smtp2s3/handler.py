@@ -120,11 +120,6 @@ class Handler:
 
         return '250 OK'
 
-    def handle_exception(self, error: Exception) -> str:
-        """Handle connection errors."""
-        self._logger.error(error)
-        return '542 Internal server error'
-
     def path_prefix(
             self, prefix_pattern: str,
             timestamp: datetime.datetime = datetime.datetime.now(utc)) -> str:

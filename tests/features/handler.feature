@@ -27,10 +27,12 @@ Feature: SMTPD Handler
         And SMTP port is 8025
         When from address is anne@example.com
         And from name is Anne Person
+        And the message size is <message_size>
         And to address is <to_address>
         Then message response is <smtp_response>
         And s3 object count is <s3_object_count>
 
         Examples:
-            | to_address      | smtp_response | topic_name | s3_object_count |
-            | foo@example.com | 205           | foo        | 1               |
+            | to_address      | message_size | smtp_response | s3_object_count |
+            | foo@example.com | tiny         | 205           | 1               |
+            | foo@example.com | larger       | 552           | 1               |
