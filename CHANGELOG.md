@@ -3,6 +3,10 @@
 
 ## Unreleased
 
+### Features
+
+* Allow the data size limit to be configured. [Ben Dalling]
+
 ### Build
 
 * Bump actions/checkout from 4 to 5. [dependabot[bot]]
