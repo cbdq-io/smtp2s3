@@ -53,3 +53,10 @@ like:
 ```
 s3://mybucket/emails/year=2025/month=08/day=12/hour=06/minute=38/b307edd6-6d17-44e2-9af3-3369227cd647.eml.gz
 ```
+There will also be a separate file called:
+
+```
+s3://mybucket/emails/year=2025/month=08/day=12/hour=06/minute=38/b307edd6-6d17-44e2-9af3-3369227cd647.json
+```
+
+which contains metadata about the message sender and recipients.
