@@ -1,6 +1,8 @@
 """A handler for use with aiosmtpd."""
 import datetime
+import ipaddress
 import json
+import socket
 import uuid
 from email import message_from_bytes
 from logging import Logger
@@ -61,6 +63,8 @@ class Handler:
             self.object_prefix = self.path_prefix(config.s3_prefix_pattern)
 
         self._rcpt_pattern = config.smtp_rcpt_regex
+        self._dnsbl_zones = list(filter(None, config.dnsbl_zones))
+        logger.debug(f'DNSBL zones are {self._dnsbl_zones}.')
 
     def generate_own_id(self) -> str:
         """
@@ -103,6 +107,7 @@ class Handler:
                 'content': envelope.original_content.decode(),
                 'rcpt_options': envelope.rcpt_options,
                 'rcpt_tos': envelope.rcpt_tos,
+                'session_ip': session.peer[0],
                 'smtp_utf8': envelope.smtp_utf8
             }
             payload = json.dumps(payload)
@@ -150,6 +155,16 @@ class Handler:
             Response message to be sent to the client.
         """
         envelope.mail_from = address
+        peer_ip = session.peer[0]
+        self._logger.debug(f'Peer IP address is {peer_ip}')
+
+        if len(self._dnsbl_zones):
+            if await self.is_ip_on_dns_blocked_list(peer_ip):
+                response = '554 5.7.1 Service unavailable; '
+                response += 'Client host blocked by policy'
+                self._logger.error(f'{response} "{peer_ip}".')
+                return response
+
         return '250 OK'
 
     async def handle_RCPT(self, server: SMTP, session: Session,
@@ -188,6 +203,42 @@ class Handler:
             return response
 
         return '250 OK'
+
+    async def is_ip_on_dns_blocked_list(self, ipaddr: str) -> bool:
+        """
+        Check if the peer IP address is on a blocked list.
+
+        Parameters
+        ----------
+        ipaddr : str
+            The IP address to be checked.
+
+        Returns
+        -------
+        bool
+            True if the IP is on a blocked list.
+        """
+        try:
+            ip = ipaddress.ip_address(ipaddr)
+        except ValueError:
+            return False
+
+        if ip.version != 4:
+            rip = ''
+        else:
+            parts = reversed(ipaddr.split('.'))
+            rip = '.'.join(parts)
+
+        for zone in self._dnsbl_zones:
+            qname = f'{rip}.{zone}'
+
+            try:
+                socket.gethostbyname(qname)
+                return True
+            except socket.gaierror:
+                continue
+
+        return False
 
     def path_prefix(
             self, prefix_pattern: str,
