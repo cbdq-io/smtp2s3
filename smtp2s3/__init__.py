@@ -1,6 +1,7 @@
 """A module for receiving SMTP messages and loading onto S3."""
 import logging
 import os
+import re
 
 __version__ = '0.1.0'
 
@@ -37,6 +38,8 @@ class EnvironmentConfig:
         The hostname to listen on for SMTPD.
     smtp_port : int
         The port number to listen on for SMTPD.
+    smtp_rcpt_regex : re.Pattern
+        The compiled regex to match recipient emails against.
 
     Parameters
     ----------
@@ -60,6 +63,15 @@ class EnvironmentConfig:
         )
         self.smtp_hostname = environ.get('SMTP_HOSTNAME', '127.0.0.1')
         self.smtp_port = int(environ.get('SMTP_PORT', '8025'))
+        default_regex = """
+        (?:[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9](?:[\u00A0-\uD7FF\uE000-\uFFFF-a-z0-9-]*[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9])?\\.)+[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9](?:[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9-]*[\u00A0-\uD7FF\uE000-\uFFFFa-z0-9])?|\\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\\.){3}\\])
+        """.replace(' ', '')
+        self.smtp_rcpt_regex = re.compile(
+            environ.get(
+                'SMTP_RECIPIENT_REGEX',
+                default_regex
+            )
+        )
 
     def _get_log_level(self) -> int:
         """

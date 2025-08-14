@@ -1,9 +1,8 @@
 """SMTPD Handler feature tests."""
 import datetime
 import os
-from email.message import EmailMessage
 from smtplib import SMTP as Client
-from smtplib import SMTPSenderRefused
+from smtplib import SMTPRecipientsRefused, SMTPSenderRefused
 
 import boto3
 from pytest_bdd import given, parsers, scenario, then, when
@@ -97,18 +96,21 @@ def _(to_address: str, client: Client, from_name: str, from_address: str,
         """
     }
     client.set_debuglevel(1)
-    message = EmailMessage()
-    message.set_content(content[message_size])
-    message['Subject'] = 'Test Message'
-    message['From'] = f'{from_name} <{from_address}>'
-    message['To'] = to_address
+    message = f'Subject: Test Message\r\n\r\n{content[message_size]}'
 
     try:
-        client.send_message(message)
+        client.sendmail(
+            from_addr=f'{from_name} <{from_address}>',
+            to_addrs=to_address,
+            msg=message.encode()
+        )
         response_code = 205
     except SMTPSenderRefused as ex:
         logger.error(f'{ex.smtp_error}')
         response_code = ex.smtp_code
+    except SMTPRecipientsRefused as ex:
+        logger.error(ex)
+        response_code = 550
 
     return response_code
 
