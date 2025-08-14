@@ -5,6 +5,8 @@
 
 ### Features
 
+* Add the DNSBL_ZONES feature. [Ben Dalling]
+
 * Allow the setting of SMTP_RECIPIENT_REGEX. [Ben Dalling]
 
 * Allow the data size limit to be configured. [Ben Dalling]

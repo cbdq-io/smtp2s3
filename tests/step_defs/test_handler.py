@@ -18,6 +18,7 @@ logger.setLevel('DEBUG')
 def test_email_handler():
     """Email Handler."""
     os.environ['S3_PREFIX_PATTERN'] = 's3://mybucket'
+    os.environ['S3_ENDPOINT_URL'] = 'http://minio:9000'
 
 
 @scenario('../features/handler.feature', 'Invalid Path Prefix')
@@ -160,3 +161,4 @@ def _(expected_path_prefix: str, prefix_pattern: str,
     handler = Handler(EnvironmentConfig(), logger)
     actual_path_prefix = handler.path_prefix(prefix_pattern, timestamp)
     assert actual_path_prefix == expected_path_prefix
+    handler.generate_own_id()

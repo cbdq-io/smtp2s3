@@ -30,6 +30,8 @@ class EnvironmentConfig:
 
     Attributes
     ----------
+    dnsbl_zones : list[str]
+        DNSBL Zones to test the session peer IP against.
     log_level : int
         The log level to run at.
     smtp_data_size_limit : int
@@ -52,6 +54,7 @@ class EnvironmentConfig:
         self._environ = environ
         self.aws_access_key_id = environ.get('AWS_ACCESS_KEY_ID', None)
         self.aws_secret_access_key = environ.get('AWS_SECRET_ACCESS_KEY', None)
+        self.dnsbl_zones = environ.get('DNSBL_ZONES', '').split(',')
         self.log_level = self._get_log_level()
         self.s3_endpoint_url = environ.get('S3_ENDPOINT_URL', None)
         self.s3_prefix_pattern = environ.get('S3_PREFIX_PATTERN')

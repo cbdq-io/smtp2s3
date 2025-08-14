@@ -10,6 +10,10 @@ The container is configured via environment variables.
   specify which account is making a request.
 - `AWS_SECRET_ACCESS_KEY` The private cryptographic key paired with the access
   key ID to securely sign and authenticate AWS API requests.
+- `DNSBL_ZONES` A CSV separated list of
+  [Domain Name System
+  blocklist](https://en.wikipedia.org/wiki/Domain_Name_System_blocklist)
+  zones (e.g. "zen.spamhaus.org") to test the session IP against.
 - `LOG_LEVEL` The verbosity of the logging.  Valid values are DEBUG, INFO,
   WARN (or WARNING), ERROR or CRITICAL.  The default is WARN.
 - `S3_ENDPOINT_URL` The endpoint to connect to the S3 service.
