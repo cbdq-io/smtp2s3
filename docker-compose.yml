@@ -13,7 +13,7 @@ services:
     command: server /data --address :9000 --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://minio:9000/minio/health/live"]
-      interval: 30s
+      interval: 3s
       timeout: 20s
       retries: 3
 
@@ -26,10 +26,13 @@ services:
     environment:
       AWS_ACCESS_KEY_ID: minioadminid
       AWS_SECRET_ACCESS_KEY: minioadminsec
+      DNSBL_ZONES: "zen.spamhaus.org"
       LOG_LEVEL: DEBUG
       S3_ENDPOINT_URL: http://minio:9000
       S3_PREFIX_PATTERN: "s3://mybucket/emails/year={YYYY}/month={MM}/day={dd}/hour={HH}/minute={mm}"
+      SMTP_DATA_SIZE_LIMIT: 194
       SMTP_HOSTNAME: "0.0.0.0"
+      SMTP_RECIPIENT_REGEX: "^.*@example.com$"
     image: sut:latest
     ports:
       - "8025:8025"

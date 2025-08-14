@@ -26,10 +26,12 @@ if __name__ == '__main__':
         msg = f'v{smtp2s3.__version__} listening on '
         msg += f'{config.smtp_hostname}:{config.smtp_port}'
         logger.info(msg)
+
         controller = Controller(
             handler,
             hostname=config.smtp_hostname,
-            port=config.smtp_port
+            port=config.smtp_port,
+            data_size_limit=config.smtp_data_size_limit
         )
         controller.start()
         signal.signal(signal.SIGINT, signal_handler)

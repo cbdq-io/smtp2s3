@@ -1,7 +1,13 @@
 """A handler for use with aiosmtpd."""
+import asyncio
 import datetime
+import hashlib
+import ipaddress
+import json
+import socket
 import uuid
 from email import message_from_bytes
+from email.message import Message
 from logging import Logger
 from urllib.parse import urlparse
 
@@ -59,13 +65,23 @@ class Handler:
         else:
             self.object_prefix = self.path_prefix(config.s3_prefix_pattern)
 
-    def generate_own_id(self) -> str:
+        self._rcpt_pattern = config.smtp_rcpt_regex
+        self._dnsbl_zones = list(filter(None, config.dnsbl_zones))
+        logger.debug(f'DNSBL zones are {self._dnsbl_zones}.')
+
+    def get_message_id(self, msg: Message) -> str:
         """
-        Generate a UUID for the message.
+        Get a usage message ID for a message..
 
         Only used of the message itself doesn't have an ID.
         """
-        return str(uuid.uuid4())
+        msg_id = msg.get('Message-ID')
+
+        if not msg_id:
+            return str(uuid.uuid4())
+
+        h = hashlib.sha256(msg_id.encode(errors='ignore')).hexdigest()[:10]
+        return f'{uuid.uuid4().hex}-{h}'
 
     async def handle_DATA(self, server: SMTP, session: Session,
                           envelope: Envelope) -> str:
@@ -86,44 +102,158 @@ class Handler:
         str
             A status string indicating the outcome.
         """
+        eml_path = json_path = '<unset>'
+
         try:
             msg = message_from_bytes(envelope.content)
-            msg_id = msg.get('Message-ID')
+            msg_id_header = msg.get('Message-ID')
+            msg_id = self.get_message_id(msg)
+            eml_path = f'{self.object_prefix}{msg_id}.eml.gz'
+            metadata = {
+                'mail_from': envelope.mail_from,
+                'mail_options': envelope.mail_options,
+                'message_id': msg_id_header,
+                'path': eml_path,
+                'rcpt_options': envelope.rcpt_options,
+                'rcpt_tos': envelope.rcpt_tos,
+                'session_ip': session.peer[0],
+                'smtp_utf8': envelope.smtp_utf8
+            }
+            content = envelope.content or b''
 
-            if not msg_id:
-                msg_id = self.generate_own_id()
-
-            message_size_bytes = len(envelope.original_content)
-            path = f'{self.object_prefix}{msg_id}.eml.gz'
-
-            with smart_open.open(path,
+            with smart_open.open(eml_path,
                                  'wb',
                                  transport_params=self.transport_params
                                  ) as stream:
-                message_bytes_written = stream.write(envelope.original_content)
+                stream.write(content)
 
-            compression_rate = (
-                round(
-                    (
-                        message_bytes_written / message_size_bytes
-                    ) * 100.0,
-                    2
-                )
-            )
-            log_msg = f'Wrote {message_bytes_written:,} bytes to {path} '
-            log_msg += f'compressed from {message_size_bytes} '
-            log_msg += f'({compression_rate})%.'
-            self._logger.debug(log_msg)
+            json_path = f'{self.object_prefix}{msg_id}.json'
+
+            with smart_open.open(json_path, 'w',
+                                 transport_params=self.transport_params
+                                 ) as stream:
+                json.dump(metadata, stream, separators=(',', ':'))
+
+            self._logger.debug(metadata)
         except Exception as ex:
-            self._logger.error(f'500 Unable to process message {ex} "{path}".')
-            return '500 Could not process your message'
+            response = '451 4.3.0 Temporary failure storing message.'
+            self._logger.error(f'{response} {ex} "{eml_path}/{json_path}".')
+            return response
 
         return '250 OK'
 
-    def handle_exception(self, error: Exception) -> str:
-        """Handle connection errors."""
-        self._logger.error(error)
-        return '542 Internal server error'
+    async def handle_MAIL(self, server: SMTP, session: Session,
+                          envelope: Envelope, address: str,
+                          mail_options: list[str]) -> str:
+        """
+        Handle MAIL_FROM events.
+
+        If implemented, this hook MUST also set the envelope.mail_from
+        attribute and it MAY extend envelope.mail_options
+
+        Parameters
+        ----------
+        server : SMTP
+            The SMTP server instance.
+        session : Session
+            The session instance currently being handled.
+        envelop : Envelope
+            The envelope instance of the current SMTP transaction.
+        address : str
+            The parsed email address given by the client in the MAIL FROM
+            command.
+        mail_options : list[str]
+            Additional ESMTP MAIL options provided by the client.
+
+        Returns
+        -------
+        str
+            Response message to be sent to the client.
+        """
+        envelope.mail_from = address
+        peer_ip = session.peer[0]
+        self._logger.debug(f'Peer IP address is {peer_ip}')
+
+        if len(self._dnsbl_zones):
+            if await self.is_ip_on_dns_blocked_list(peer_ip):
+                response = '554 5.7.1 Service unavailable; '
+                response += 'Client host blocked by policy'
+                self._logger.error(f'{response} "{peer_ip}".')
+                return response
+
+        return '250 OK'
+
+    async def handle_RCPT(self, server: SMTP, session: Session,
+                          envelope: Envelope, address: str,
+                          rcpt_options: list[str]) -> str:
+        """
+        Handle RCPT TO events.
+
+        If implemented, this hook SHOULD append the address to
+        envelope.rcpt_tos and it MAY extend envelope.rcpt_options (both of
+        which are always Python lists).
+
+        Parameters
+        ----------
+        server : SMTP
+            The SMTP server instance.
+        session : Session
+            The session instance currently being handled.
+        envelope : Envelope
+            The envelope instance of the current SMTP transaction.
+        address : str
+            The parsed email address given by the client in the RCPT TO command.
+        rcpt_options : list[str]
+            Additional ESMTP RCPT options provided by the client.
+
+        Returns
+        -------
+        str
+            Response message to be sent to the client.
+        """
+        if not self._rcpt_pattern.fullmatch(address):
+            response = '550 5.1.1 No such user'
+            self._logger.error(f'{response} <{address}>.')
+            return response
+
+        envelope.rcpt_tos.append(address)
+        return '250 OK'
+
+    async def is_ip_on_dns_blocked_list(self, ipaddr: str) -> bool:
+        """
+        Check if the peer IP address is on a blocked list.
+
+        Parameters
+        ----------
+        ipaddr : str
+            The IP address to be checked.
+
+        Returns
+        -------
+        bool
+            True if the IP is on a blocked list.
+        """
+        try:
+            ip = ipaddress.ip_address(ipaddr)
+        except ValueError:
+            return False
+
+        if ip.version != 4:
+            return False
+        else:
+            parts = reversed(ipaddr.split('.'))
+            rip = '.'.join(parts)
+
+        for zone in self._dnsbl_zones:
+            qname = f'{rip}.{zone}'
+
+            try:
+                await asyncio.to_thread(socket.gethostbyname(qname))
+                return True
+            except socket.gaierror:
+                continue
+
+        return False
 
     def path_prefix(
             self, prefix_pattern: str,
