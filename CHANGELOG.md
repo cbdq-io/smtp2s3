@@ -5,6 +5,8 @@
 
 ### Features
 
+* Write two files, one for content and another for metadata. [Ben Dalling]
+
 * Add the DNSBL_ZONES feature. [Ben Dalling]
 
 * Allow the setting of SMTP_RECIPIENT_REGEX. [Ben Dalling]
@@ -12,6 +14,8 @@
 * Allow the data size limit to be configured. [Ben Dalling]
 
 ### Build
+
+* Release/0.2.0. [Ben Dalling]
 
 * Bump actions/checkout from 4 to 5. [dependabot[bot]]
 
