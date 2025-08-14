@@ -161,4 +161,3 @@ def _(expected_path_prefix: str, prefix_pattern: str,
     handler = Handler(EnvironmentConfig(), logger)
     actual_path_prefix = handler.path_prefix(prefix_pattern, timestamp)
     assert actual_path_prefix == expected_path_prefix
-    handler.generate_own_id()

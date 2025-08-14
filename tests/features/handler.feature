@@ -34,6 +34,6 @@ Feature: SMTPD Handler
 
         Examples:
             | to_address      | message_size | smtp_response | s3_object_count |
-            | foo@example.com | tiny         | 205           | 1               |
-            | foo@acme.com    | tiny         | 550           | 1               |
-            | foo@example.com | larger       | 552           | 1               |
+            | foo@example.com | tiny         | 205           | 2               |
+            | foo@acme.com    | tiny         | 550           | 2               |
+            | foo@example.com | larger       | 552           | 2               |

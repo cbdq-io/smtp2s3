@@ -1,10 +1,13 @@
 """A handler for use with aiosmtpd."""
+import asyncio
 import datetime
+import hashlib
 import ipaddress
 import json
 import socket
 import uuid
 from email import message_from_bytes
+from email.message import Message
 from logging import Logger
 from urllib.parse import urlparse
 
@@ -66,13 +69,19 @@ class Handler:
         self._dnsbl_zones = list(filter(None, config.dnsbl_zones))
         logger.debug(f'DNSBL zones are {self._dnsbl_zones}.')
 
-    def generate_own_id(self) -> str:
+    def get_message_id(self, msg: Message) -> str:
         """
-        Generate a UUID for the message.
+        Get a usage message ID for a message..
 
         Only used of the message itself doesn't have an ID.
         """
-        return str(uuid.uuid4())
+        msg_id = msg.get('Message-ID')
+
+        if not msg_id:
+            return str(uuid.uuid4())
+
+        h = hashlib.sha256(msg_id.encode(errors='ignore')).hexdigest()[:10]
+        return f'{uuid.uuid4().hex}-{h}'
 
     async def handle_DATA(self, server: SMTP, session: Session,
                           envelope: Envelope) -> str:
@@ -93,35 +102,42 @@ class Handler:
         str
             A status string indicating the outcome.
         """
+        eml_path = json_path = '<unset>'
+
         try:
             msg = message_from_bytes(envelope.content)
-            msg_id = msg.get('Message-ID')
-
-            if not msg_id:
-                msg_id = self.generate_own_id()
-
-            path = f'{self.object_prefix}{msg_id}.json.gz'
-            payload = {
+            msg_id_header = msg.get('Message-ID')
+            msg_id = self.get_message_id(msg)
+            eml_path = f'{self.object_prefix}{msg_id}.eml.gz'
+            metadata = {
                 'mail_from': envelope.mail_from,
                 'mail_options': envelope.mail_options,
-                'content': envelope.original_content.decode(),
+                'message_id': msg_id_header,
+                'path': eml_path,
                 'rcpt_options': envelope.rcpt_options,
                 'rcpt_tos': envelope.rcpt_tos,
                 'session_ip': session.peer[0],
                 'smtp_utf8': envelope.smtp_utf8
             }
-            payload = json.dumps(payload)
+            content = envelope.content or b''
 
-            with smart_open.open(path,
+            with smart_open.open(eml_path,
                                  'wb',
                                  transport_params=self.transport_params
                                  ) as stream:
-                stream.write(payload.encode())
+                stream.write(content)
 
-            self._logger.debug(payload)
+            json_path = f'{self.object_prefix}{msg_id}.json'
+
+            with smart_open.open(json_path, 'w',
+                                 transport_params=self.transport_params
+                                 ) as stream:
+                json.dump(metadata, stream, separators=(',', ':'))
+
+            self._logger.debug(metadata)
         except Exception as ex:
             response = '451 4.3.0 Temporary failure storing message.'
-            self._logger.error(f'{response} {ex} "{path}".')
+            self._logger.error(f'{response} {ex} "{eml_path}/{json_path}".')
             return response
 
         return '250 OK'
@@ -195,13 +211,12 @@ class Handler:
         str
             Response message to be sent to the client.
         """
-        envelope.rcpt_tos.append(address)
-
-        if not self._rcpt_pattern.match(address):
+        if not self._rcpt_pattern.fullmatch(address):
             response = '550 5.1.1 No such user'
             self._logger.error(f'{response} <{address}>.')
             return response
 
+        envelope.rcpt_tos.append(address)
         return '250 OK'
 
     async def is_ip_on_dns_blocked_list(self, ipaddr: str) -> bool:
@@ -224,7 +239,7 @@ class Handler:
             return False
 
         if ip.version != 4:
-            rip = ''
+            return False
         else:
             parts = reversed(ipaddr.split('.'))
             rip = '.'.join(parts)
@@ -233,7 +248,7 @@ class Handler:
             qname = f'{rip}.{zone}'
 
             try:
-                socket.gethostbyname(qname)
+                await asyncio.to_thread(socket.gethostbyname(qname))
                 return True
             except socket.gaierror:
                 continue
