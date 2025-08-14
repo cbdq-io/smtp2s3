@@ -1,5 +1,6 @@
 """A handler for use with aiosmtpd."""
 import datetime
+import json
 import uuid
 from email import message_from_bytes
 from logging import Logger
@@ -59,6 +60,8 @@ class Handler:
         else:
             self.object_prefix = self.path_prefix(config.s3_prefix_pattern)
 
+        self._rcpt_pattern = config.smtp_rcpt_regex
+
     def generate_own_id(self) -> str:
         """
         Generate a UUID for the message.
@@ -93,30 +96,96 @@ class Handler:
             if not msg_id:
                 msg_id = self.generate_own_id()
 
-            message_size_bytes = len(envelope.original_content)
-            path = f'{self.object_prefix}{msg_id}.eml.gz'
+            path = f'{self.object_prefix}{msg_id}.json.gz'
+            payload = {
+                'mail_from': envelope.mail_from,
+                'mail_options': envelope.mail_options,
+                'content': envelope.original_content.decode(),
+                'rcpt_options': envelope.rcpt_options,
+                'rcpt_tos': envelope.rcpt_tos,
+                'smtp_utf8': envelope.smtp_utf8
+            }
+            payload = json.dumps(payload)
 
             with smart_open.open(path,
                                  'wb',
                                  transport_params=self.transport_params
                                  ) as stream:
-                message_bytes_written = stream.write(envelope.original_content)
+                stream.write(payload.encode())
 
-            compression_rate = (
-                round(
-                    (
-                        message_bytes_written / message_size_bytes
-                    ) * 100.0,
-                    2
-                )
-            )
-            log_msg = f'Wrote {message_bytes_written:,} bytes to {path} '
-            log_msg += f'compressed from {message_size_bytes} '
-            log_msg += f'({compression_rate})%.'
-            self._logger.debug(log_msg)
+            self._logger.debug(payload)
         except Exception as ex:
-            self._logger.error(f'500 Unable to process message {ex} "{path}".')
-            return '500 Could not process your message'
+            response = '451 4.3.0 Temporary failure storing message.'
+            self._logger.error(f'{response} {ex} "{path}".')
+            return response
+
+        return '250 OK'
+
+    async def handle_MAIL(self, server: SMTP, session: Session,
+                          envelope: Envelope, address: str,
+                          mail_options: list[str]) -> str:
+        """
+        Handle MAIL_FROM events.
+
+        If implemented, this hook MUST also set the envelope.mail_from
+        attribute and it MAY extend envelope.mail_options
+
+        Parameters
+        ----------
+        server : SMTP
+            The SMTP server instance.
+        session : Session
+            The session instance currently being handled.
+        envelop : Envelope
+            The envelope instance of the current SMTP transaction.
+        address : str
+            The parsed email address given by the client in the MAIL FROM
+            command.
+        mail_options : list[str]
+            Additional ESMTP MAIL options provided by the client.
+
+        Returns
+        -------
+        str
+            Response message to be sent to the client.
+        """
+        envelope.mail_from = address
+        return '250 OK'
+
+    async def handle_RCPT(self, server: SMTP, session: Session,
+                          envelope: Envelope, address: str,
+                          rcpt_options: list[str]) -> str:
+        """
+        Handle RCPT TO events.
+
+        If implemented, this hook SHOULD append the address to
+        envelope.rcpt_tos and it MAY extend envelope.rcpt_options (both of
+        which are always Python lists).
+
+        Parameters
+        ----------
+        server : SMTP
+            The SMTP server instance.
+        session : Session
+            The session instance currently being handled.
+        envelope : Envelope
+            The envelope instance of the current SMTP transaction.
+        address : str
+            The parsed email address given by the client in the RCPT TO command.
+        rcpt_options : list[str]
+            Additional ESMTP RCPT options provided by the client.
+
+        Returns
+        -------
+        str
+            Response message to be sent to the client.
+        """
+        envelope.rcpt_tos.append(address)
+
+        if not self._rcpt_pattern.match(address):
+            response = '550 5.1.1 No such user'
+            self._logger.error(f'{response} <{address}>.')
+            return response
 
         return '250 OK'
 
