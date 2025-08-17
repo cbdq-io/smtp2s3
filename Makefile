@@ -10,6 +10,7 @@ clean:
 	docker compose down -t 0
 
 lint:
+	helm lint charts/smtp2s3
 	docker run --rm -i hadolint/hadolint < Dockerfile
 	yamllint -s .
 	isort -v .

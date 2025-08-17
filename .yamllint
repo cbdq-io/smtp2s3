@@ -4,6 +4,7 @@ extends: default
 
 ignore: |
   .qlty/
+  charts/smtp2s3/templates/
 
 rules:
   braces:

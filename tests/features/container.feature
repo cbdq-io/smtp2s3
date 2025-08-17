@@ -9,3 +9,9 @@ Feature: Test the smtp2s3 container
         Then the TestInfra user is present
         And the TestInfra user group is nobody
         And the TestInfra user shell is /sbin/nologin
+
+    Scenario: Verify the Chart appVersion
+        Given the smtp2s3 version
+        When compared to the chart appVersion
+        And the chart version
+        Then the versions match

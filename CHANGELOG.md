@@ -1,6 +1,13 @@
 # Changelog
 
 
+## Unreleased
+
+### Features
+
+* Add a basic Helm chart. [Ben Dalling]
+
+
 ## 0.2.0 (2025-08-14)
 
 ### Features
