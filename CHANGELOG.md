@@ -7,6 +7,22 @@
 
 * Add a basic Helm chart. [Ben Dalling]
 
+### Build
+
+* Bump aquasecurity/trivy-action from 0.32.0 to 0.33.0. [dependabot[bot]]
+
+  Bumps [aquasecurity/trivy-action](https://github.com/aquasecurity/trivy-action) from 0.32.0 to 0.33.0.
+  - [Release notes](https://github.com/aquasecurity/trivy-action/releases)
+  - [Commits](https://github.com/aquasecurity/trivy-action/compare/0.32.0...0.33.0)
+
+  ---
+  updated-dependencies:
+  - dependency-name: aquasecurity/trivy-action
+    dependency-version: 0.33.0
+    dependency-type: direct:production
+    update-type: version-update:semver-minor
+  ...
+
 
 ## 0.2.0 (2025-08-14)
 
